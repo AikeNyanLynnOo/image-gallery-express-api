@@ -1,11 +1,16 @@
 const cloudinary = require('../config/cloudinary');
 const Image = require('../models/Image');
 const sharp = require('sharp');
+const ApiResponse = require('../utils/apiResponse');
 
 const uploadImage = async (req, res) => {
   try {
     if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
+      return res.status(400).json(
+        ApiResponse.error('No file uploaded', {
+          file: 'Please upload an image file'
+        })
+      );
     }
 
     const file = req.file;
@@ -13,7 +18,7 @@ const uploadImage = async (req, res) => {
     
     // Compress image if it's too large
     let buffer = file.buffer;
-    if (file.size > 1024 * 1024) { // If larger than 1MB
+    if (file.size > 1024 * 1024) {
       buffer = await sharp(file.buffer)
         .jpeg({ quality: 80 })
         .toBuffer();
@@ -41,12 +46,18 @@ const uploadImage = async (req, res) => {
     });
     await image.save();
 
-    res.status(201).json({
-      message: 'Image uploaded successfully',
-      image
-    });
+    res.status(201).json(
+      ApiResponse.success(
+        { image },
+        'Image uploaded successfully'
+      )
+    );
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json(
+      ApiResponse.error('Failed to upload image', {
+        general: error.message
+      })
+    );
   }
 };
 
