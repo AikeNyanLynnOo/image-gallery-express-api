@@ -136,18 +136,30 @@ const logout = async (req, res) => {
 
     if (!token) {
       return res.status(400).json(
-        ApiResponse.error('No token provided')
+        ApiResponse.error('No token provided', {
+          auth: 'Please provide a valid authentication token'
+        })
       );
     }
 
     try {
-      // Verify the token to get its expiration
+      // Verify the token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       
-      // Add token to blacklist
+      // Check if token is already blacklisted
+      const isBlacklisted = await TokenBlacklist.findOne({ token });
+      if (isBlacklisted) {
+        return res.status(401).json(
+          ApiResponse.error('Token is no longer valid', {
+            auth: 'This session has already been logged out'
+          })
+        );
+      }
+
+      // Add valid token to blacklist
       await TokenBlacklist.create({
         token,
-        expiresAt: new Date(decoded.exp * 1000) // Convert JWT exp to Date
+        expiresAt: new Date(decoded.exp * 1000)
       });
 
       res.json(
@@ -157,13 +169,27 @@ const logout = async (req, res) => {
         )
       );
     } catch (error) {
-      // If token is invalid or expired, still return success
-      // as the token is effectively invalidated
-      res.json(
-        ApiResponse.success(
-          null,
-          'Logged out successfully'
-        )
+      if (error.name === 'TokenExpiredError') {
+        return res.status(401).json(
+          ApiResponse.error('Token expired', {
+            auth: 'Your session has expired. Please sign in again.'
+          })
+        );
+      }
+
+      if (error.name === 'JsonWebTokenError') {
+        return res.status(401).json(
+          ApiResponse.error('Invalid token', {
+            auth: 'Invalid authentication token'
+          })
+        );
+      }
+
+      // For any other JWT errors
+      return res.status(401).json(
+        ApiResponse.error('Authentication failed', {
+          auth: 'Authentication failed'
+        })
       );
     }
   } catch (error) {
