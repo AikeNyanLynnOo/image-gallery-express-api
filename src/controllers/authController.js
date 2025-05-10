@@ -4,6 +4,7 @@ const User = require("../models/User");
 const ApiResponse = require("../utils/apiResponse");
 const { generateVerificationToken } = require("./verificationController");
 const { sendVerificationEmail } = require("../services/emailService");
+const TokenBlacklist = require('../models/TokenBlacklist');
 
 const signUp = async (req, res) => {
   try {
@@ -130,16 +131,64 @@ const signIn = async (req, res) => {
 
 const logout = async (req, res) => {
   try {
-    res.json(ApiResponse.success(null, "Logged out successfully"));
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
+
+    if (!token) {
+      return res.status(400).json(
+        ApiResponse.error('No token provided')
+      );
+    }
+
+    try {
+      // Verify the token to get its expiration
+      const decoded = jwt.verify(token, process.env.JWT_SECRET);
+      
+      // Add token to blacklist
+      await TokenBlacklist.create({
+        token,
+        expiresAt: new Date(decoded.exp * 1000) // Convert JWT exp to Date
+      });
+
+      res.json(
+        ApiResponse.success(
+          null,
+          'Logged out successfully'
+        )
+      );
+    } catch (error) {
+      // If token is invalid or expired, still return success
+      // as the token is effectively invalidated
+      res.json(
+        ApiResponse.success(
+          null,
+          'Logged out successfully'
+        )
+      );
+    }
   } catch (error) {
     res.status(500).json(
-      ApiResponse.error("Internal server error", {
-        general: error.message,
+      ApiResponse.error('Internal server error', {
+        general: error.message
       })
     );
   }
 };
 
+// Add a function to blacklist refresh tokens
+const blacklistRefreshToken = async (refreshToken) => {
+  try {
+    const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
+    await TokenBlacklist.create({
+      token: refreshToken,
+      expiresAt: new Date(decoded.exp * 1000)
+    });
+  } catch (error) {
+    console.error('Error blacklisting refresh token:', error);
+  }
+};
+
+// Update refreshToken function to blacklist old refresh token
 const refreshToken = async (req, res) => {
   try {
     const { refreshToken } = req.body;
@@ -154,6 +203,16 @@ const refreshToken = async (req, res) => {
       // Verify the refresh token
       const decoded = jwt.verify(refreshToken, process.env.JWT_REFRESH_SECRET);
       
+      // Check if refresh token is blacklisted
+      const isBlacklisted = await TokenBlacklist.findOne({ token: refreshToken });
+      if (isBlacklisted) {
+        return res.status(401).json(
+          ApiResponse.error('Refresh token is no longer valid', {
+            auth: 'This session has been logged out. Please sign in again.'
+          })
+        );
+      }
+
       // Check if user exists
       const user = await User.findById(decoded.userId);
       if (!user) {
@@ -162,17 +221,27 @@ const refreshToken = async (req, res) => {
         );
       }
 
-      // Generate new access token
+      // Blacklist the old refresh token
+      await blacklistRefreshToken(refreshToken);
+
+      // Generate new tokens
       const newAccessToken = jwt.sign(
         { userId: user._id },
         process.env.JWT_SECRET,
-        { expiresIn: '1h' } // Shorter expiration for access token
+        { expiresIn: '1h' }
+      );
+
+      const newRefreshToken = jwt.sign(
+        { userId: user._id },
+        process.env.JWT_REFRESH_SECRET,
+        { expiresIn: '7d' }
       );
 
       res.json(
         ApiResponse.success(
           {
-            accessToken: newAccessToken
+            accessToken: newAccessToken,
+            refreshToken: newRefreshToken
           },
           'Token refreshed successfully'
         )

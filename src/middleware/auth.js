@@ -1,6 +1,7 @@
 require("dotenv").config();
 const jwt = require("jsonwebtoken");
 const ApiResponse = require('../utils/apiResponse');
+const TokenBlacklist = require('../models/TokenBlacklist');
 
 const authenticateToken = async (req, res, next) => {
   try {
@@ -16,6 +17,16 @@ const authenticateToken = async (req, res, next) => {
     }
 
     try {
+      // Check if token is blacklisted
+      const isBlacklisted = await TokenBlacklist.findOne({ token });
+      if (isBlacklisted) {
+        return res.status(401).json(
+          ApiResponse.error('Token is no longer valid', {
+            auth: 'This session has been logged out. Please sign in again.'
+          })
+        );
+      }
+
       // Verify the token
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = { userId: decoded.userId };
