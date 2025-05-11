@@ -15,21 +15,33 @@ const uploadImage = async (req, res) => {
 
     const file = req.file;
     const userId = req.user.userId;
+
+    // Check file size
+    if (file.size > 5 * 1024 * 1024) { // 5MB
+      return res.status(400).json(
+        ApiResponse.error('File size too large', {
+          file: 'Image size must be less than 5MB. Please upload a smaller image.'
+        })
+      );
+    }
     
     // Compress image if it's too large
     let buffer = file.buffer;
-    if (file.size > 1024 * 1024) {
+    if (file.size > 1024 * 1024) { // If larger than 1MB
       buffer = await sharp(file.buffer)
-        .jpeg({ quality: 80 })
+        .toFormat('jpeg', { quality: 80 })
         .toBuffer();
     }
 
-    // Upload to Cloudinary
+    // Upload to Cloudinary with proper format settings
     const result = await new Promise((resolve, reject) => {
       cloudinary.uploader.upload_stream(
         {
           folder: `users/${userId}`,
-          resource_type: 'auto'
+          resource_type: 'image',
+          format: 'jpg', // Default to jpg for better compression
+          quality: 'auto:good', // Automatic quality optimization
+          fetch_format: 'auto' // Let Cloudinary choose the best format for delivery
         },
         (error, result) => {
           if (error) reject(error);
@@ -42,7 +54,10 @@ const uploadImage = async (req, res) => {
     const image = new Image({
       userId,
       cloudinaryId: result.public_id,
-      url: result.secure_url
+      url: result.secure_url,
+      format: result.format,
+      originalFormat: file.mimetype,
+      size: result.bytes
     });
     await image.save();
 
@@ -53,6 +68,7 @@ const uploadImage = async (req, res) => {
       )
     );
   } catch (error) {
+    console.error('Upload error:', error);
     res.status(500).json(
       ApiResponse.error('Failed to upload image', {
         general: error.message
