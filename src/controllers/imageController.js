@@ -33,15 +33,15 @@ const uploadImage = async (req, res) => {
         .toBuffer();
     }
 
-    // Upload to Cloudinary with proper format settings
+    // Upload to Cloudinary
     const result = await new Promise((resolve, reject) => {
       cloudinary.uploader.upload_stream(
         {
           folder: `users/${userId}`,
           resource_type: 'image',
-          format: 'jpg', // Default to jpg for better compression
-          quality: 'auto:good', // Automatic quality optimization
-          fetch_format: 'auto' // Let Cloudinary choose the best format for delivery
+          format: 'jpg',
+          quality: 'auto:good',
+          fetch_format: 'auto'
         },
         (error, result) => {
           if (error) reject(error);
@@ -80,10 +80,22 @@ const uploadImage = async (req, res) => {
 const getUserImages = async (req, res) => {
   try {
     const userId = req.user.userId;
-    const images = await Image.find({ userId }).sort({ uploadedAt: -1 });
-    res.json({ images });
+    const images = await Image.find({ userId })
+      .sort({ uploadedAt: -1 })
+      .select('-__v'); // Exclude version key
+
+    res.json(
+      ApiResponse.success(
+        { images },
+        'Images retrieved successfully'
+      )
+    );
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json(
+      ApiResponse.error('Failed to retrieve images', {
+        general: error.message
+      })
+    );
   }
 };
 
@@ -92,20 +104,39 @@ const deleteImage = async (req, res) => {
     const { imageId } = req.params;
     const userId = req.user.userId;
 
+    // Find and verify ownership
     const image = await Image.findOne({ _id: imageId, userId });
     if (!image) {
-      return res.status(404).json({ error: 'Image not found' });
+      return res.status(404).json(
+        ApiResponse.error('Image not found', {
+          image: 'Image not found or you do not have permission to delete it'
+        })
+      );
     }
 
     // Delete from Cloudinary
-    await cloudinary.uploader.destroy(image.cloudinaryId);
+    try {
+      await cloudinary.uploader.destroy(image.cloudinaryId);
+    } catch (cloudinaryError) {
+      console.error('Cloudinary deletion error:', cloudinaryError);
+      // Continue with local deletion even if Cloudinary fails
+    }
 
     // Delete from MongoDB
     await image.deleteOne();
 
-    res.json({ message: 'Image deleted successfully' });
+    res.json(
+      ApiResponse.success(
+        null,
+        'Image deleted successfully'
+      )
+    );
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json(
+      ApiResponse.error('Failed to delete image', {
+        general: error.message
+      })
+    );
   }
 };
 
@@ -114,20 +145,32 @@ const toggleFavorite = async (req, res) => {
     const { imageId } = req.params;
     const userId = req.user.userId;
 
+    // Find and verify ownership
     const image = await Image.findOne({ _id: imageId, userId });
     if (!image) {
-      return res.status(404).json({ error: 'Image not found' });
+      return res.status(404).json(
+        ApiResponse.error('Image not found', {
+          image: 'Image not found or you do not have permission to modify it'
+        })
+      );
     }
 
+    // Toggle favorite status
     image.isFavorite = !image.isFavorite;
     await image.save();
 
-    res.json({ 
-      message: 'Favorite status updated',
-      image
-    });
+    res.json(
+      ApiResponse.success(
+        { image },
+        `Image ${image.isFavorite ? 'added to' : 'removed from'} favorites`
+      )
+    );
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(500).json(
+      ApiResponse.error('Failed to update favorite status', {
+        general: error.message
+      })
+    );
   }
 };
 
