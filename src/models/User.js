@@ -13,6 +13,45 @@ const userSchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  profile: {
+    firstName: {
+      type: String,
+      trim: true,
+      maxLength: 50,
+      default: null
+    },
+    lastName: {
+      type: String,
+      trim: true,
+      maxLength: 50,
+      default: null
+    },
+    displayName: {
+      type: String,
+      trim: true,
+      maxLength: 50,
+      default: null
+    },
+    bio: {
+      type: String,
+      maxLength: 500,
+      default: null
+    },
+    avatar: {
+      type: String,
+      default: null
+    },
+    location: {
+      type: String,
+      maxLength: 100,
+      default: null
+    },
+    website: {
+      type: String,
+      maxLength: 200,
+      default: null
+    }
+  },
   isVerified: {
     type: Boolean,
     default: false
@@ -22,6 +61,10 @@ const userSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  updatedAt: {
+    type: Date,
+    default: Date.now
   }
 });
 
@@ -29,6 +72,12 @@ const userSchema = new mongoose.Schema({
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
   this.password = await bcrypt.hash(this.password, 10);
+  next();
+});
+
+// Update the updatedAt timestamp before saving
+userSchema.pre('save', function(next) {
+  this.updatedAt = Date.now();
   next();
 });
 
