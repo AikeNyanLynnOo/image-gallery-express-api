@@ -1,6 +1,6 @@
 const cloudinary = require('../config/cloudinary');
 const Image = require('../models/Image');
-const sharp = require('sharp');
+const sharp = require('sharp');  // Keep the import for reference
 const ApiResponse = require('../utils/apiResponse');
 
 const uploadImage = async (req, res) => {
@@ -27,11 +27,11 @@ const uploadImage = async (req, res) => {
     
     // Compress image if it's too large
     let buffer = file.buffer;
-    if (file.size > 1024 * 1024) { // If larger than 1MB
-      buffer = await sharp(file.buffer)
-        .toFormat('jpeg', { quality: 80 })
-        .toBuffer();
-    }
+    // if (file.size > 1024 * 1024) { // If larger than 1MB
+    //   buffer = await sharp(file.buffer)
+    //     .toFormat('jpeg', { quality: 80 })
+    //     .toBuffer();
+    // }
 
     // Upload to Cloudinary
     const result = await new Promise((resolve, reject) => {
@@ -39,9 +39,9 @@ const uploadImage = async (req, res) => {
         {
           folder: `users/${userId}`,
           resource_type: 'image',
-          format: 'jpg',
-          quality: 'auto:good',
-          fetch_format: 'auto'
+          // format: 'jpg',  // Commented out to preserve original format
+          // quality: 'auto:good',  // Commented out to preserve original quality
+          // fetch_format: 'auto'  // Commented out to prevent format conversion
         },
         (error, result) => {
           if (error) reject(error);
