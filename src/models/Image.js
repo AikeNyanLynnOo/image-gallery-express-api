@@ -14,9 +14,9 @@ const imageSchema = new mongoose.Schema({
     type: String,
     required: true
   },
-  isFavorite: {
+  isPublished: {
     type: Boolean,
-    default: false
+    default: false  // Images are private by default
   },
   collections: [{
     type: mongoose.Schema.Types.ObjectId,
