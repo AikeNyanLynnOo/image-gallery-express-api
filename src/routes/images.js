@@ -6,10 +6,15 @@ const ApiResponse = require("../utils/apiResponse");
 const {
   uploadImage,
   getUserImages,
+  getPublicImages,
   deleteImage,
   toggleFavorite,
-  updateImage
+  getFavoriteImages,
+  checkFavoriteStatus,
+  updateImage,
+  togglePublishStatus
 } = require("../controllers/imageController");
+const UserFavorite = require('../models/UserFavorite');
 
 // Custom error handler for multer
 const handleMulterError = (error, req, res, next) => {
@@ -76,13 +81,20 @@ const upload = multer({
   },
 });
 
-router.use(authenticateToken);
+// Public route (no authentication required)
+router.get("/public", getPublicImages);
 
-// Add the error handler middleware after the upload middleware
+// Protected routes
+router.use(authenticateToken);
 router.post("/upload", upload.single("image"), handleMulterError, uploadImage);
 router.get("/", getUserImages);
 router.patch("/:imageId", updateImage);
 router.delete("/:imageId", deleteImage);
-router.patch("/:imageId/favorite", toggleFavorite);
+router.patch("/:imageId/publish", togglePublishStatus);
+
+// Favorite routes
+router.post('/:imageId/favorite', toggleFavorite);
+router.get('/favorites', getFavoriteImages);
+router.get('/:imageId/favorite', checkFavoriteStatus);
 
 module.exports = router;
