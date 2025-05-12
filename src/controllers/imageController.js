@@ -1,6 +1,6 @@
 const cloudinary = require('../config/cloudinary');
 const Image = require('../models/Image');
-const sharp = require('sharp');  // Keep the import for reference
+const Topic = require('../models/Topic');
 const ApiResponse = require('../utils/apiResponse');
 
 const uploadImage = async (req, res) => {
@@ -174,9 +174,87 @@ const toggleFavorite = async (req, res) => {
   }
 };
 
+// Update image (including topics)
+const updateImage = async (req, res) => {
+  try {
+    const { imageId } = req.params;
+    const { topics } = req.body; // Expecting array of topic IDs
+    const userId = req.user.userId;
+
+    // Find and verify ownership
+    const image = await Image.findOne({ _id: imageId, userId });
+    if (!image) {
+      return res.status(404).json(
+        ApiResponse.error('Image not found', {
+          image: 'Image not found or you do not have permission to modify it'
+        })
+      );
+    }
+
+    // If topics are provided, update them
+    if (topics) {
+      // Validate that all topics exist
+      const existingTopics = await Topic.find({ _id: { $in: topics } });
+      if (existingTopics.length !== topics.length) {
+        return res.status(400).json(
+          ApiResponse.error('Invalid topics', {
+            topics: 'One or more topics do not exist'
+          })
+        );
+      }
+
+      // Get current topics for comparison
+      const currentTopics = image.topics.map(t => t.toString());
+      const newTopics = topics.map(t => t.toString());
+
+      // Find topics to add and remove
+      const topicsToAdd = newTopics.filter(t => !currentTopics.includes(t));
+      const topicsToRemove = currentTopics.filter(t => !newTopics.includes(t));
+
+      // Update image's topics
+      image.topics = topics;
+      await image.save();
+
+      // Update topics' images arrays
+      if (topicsToAdd.length > 0) {
+        await Topic.updateMany(
+          { _id: { $in: topicsToAdd } },
+          { $addToSet: { images: imageId } }
+        );
+      }
+
+      if (topicsToRemove.length > 0) {
+        await Topic.updateMany(
+          { _id: { $in: topicsToRemove } },
+          { $pull: { images: imageId } }
+        );
+      }
+    }
+
+    // Populate topics in response
+    const updatedImage = await Image.findById(imageId)
+      .populate('topics')
+      .populate('collections');
+
+    res.json(
+      ApiResponse.success(
+        { image: updatedImage },
+        'Image updated successfully'
+      )
+    );
+  } catch (error) {
+    res.status(500).json(
+      ApiResponse.error('Failed to update image', {
+        general: error.message
+      })
+    );
+  }
+};
+
 module.exports = {
   uploadImage,
   getUserImages,
   deleteImage,
-  toggleFavorite
+  toggleFavorite,
+  updateImage,
 }; 

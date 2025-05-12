@@ -6,6 +6,8 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const imageRoutes = require('./routes/images');
 const verificationRoutes = require('./routes/verification');
+const collectionRoutes = require('./routes/collections');
+const topicRoutes = require('./routes/topics');
 const profileRoutes = require('./routes/profile');
 
 const app = express();
@@ -38,9 +40,11 @@ app.get('/health', (req, res) => {
 
 // Routes
 app.use('/api/auth', authRoutes);
-app.use('/api/images', imageRoutes);
-app.use('/api/verification', verificationRoutes);
+app.use('/api/verify', verificationRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/images', imageRoutes);
+app.use('/api/collections', collectionRoutes);
+app.use('/api/topics', topicRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {
