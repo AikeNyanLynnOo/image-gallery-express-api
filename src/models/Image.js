@@ -18,6 +18,14 @@ const imageSchema = new mongoose.Schema({
     type: Boolean,
     default: false
   },
+  collections: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Collection'
+  }],
+  topics: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Topic'
+  }],
   uploadedAt: {
     type: Date,
     default: Date.now

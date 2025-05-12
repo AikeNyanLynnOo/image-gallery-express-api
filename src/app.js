@@ -6,6 +6,8 @@ const cors = require('cors');
 const authRoutes = require('./routes/auth');
 const imageRoutes = require('./routes/images');
 const verificationRoutes = require('./routes/verification');
+const collectionRoutes = require('./routes/collections');
+const topicRoutes = require('./routes/topics');
 
 const app = express();
 
@@ -39,6 +41,8 @@ app.get('/health', (req, res) => {
 app.use('/api/auth', authRoutes);
 app.use('/api/verify', verificationRoutes);
 app.use('/api/images', imageRoutes);
+app.use('/api/collections', collectionRoutes);
+app.use('/api/topics', topicRoutes);
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
