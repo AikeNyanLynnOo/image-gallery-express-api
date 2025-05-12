@@ -8,6 +8,20 @@ const createCollection = async (req, res) => {
     const { name, description } = req.body;
     const userId = req.user.userId;
 
+    // Check if collection with same name already exists for this user
+    const existingCollection = await Collection.findOne({ 
+      userId, 
+      name: { $regex: new RegExp(`^${name}$`, 'i') } // Case-insensitive match
+    });
+
+    if (existingCollection) {
+      return res.status(400).json(
+        ApiResponse.error('Collection already exists', {
+          name: 'You already have a collection with this name'
+        })
+      );
+    }
+
     const collection = new Collection({
       name,
       description,
@@ -80,17 +94,22 @@ const addImageToCollection = async (req, res) => {
       );
     }
 
-    // Add image to collection if not already present
-    if (!collection.images.includes(imageId)) {
-      collection.images.push(imageId);
-      await collection.save();
+    // Check if image is already in collection
+    if (collection.images.includes(imageId)) {
+      return res.status(400).json(
+        ApiResponse.error('Image already in collection', {
+          image: 'This image is already in the collection'
+        })
+      );
     }
 
-    // Add collection to image if not already present
-    if (!image.collections.includes(collectionId)) {
-      image.collections.push(collectionId);
-      await image.save();
-    }
+    // Add image to collection
+    collection.images.push(imageId);
+    await collection.save();
+
+    // Add collection to image
+    image.collections.push(collectionId);
+    await image.save();
 
     res.json(
       ApiResponse.success(
@@ -119,6 +138,15 @@ const removeImageFromCollection = async (req, res) => {
       return res.status(404).json(
         ApiResponse.error('Collection not found', {
           collection: 'Collection not found or you do not have permission to modify it'
+        })
+      );
+    }
+
+    // Check if image is in collection
+    if (!collection.images.includes(imageId)) {
+      return res.status(400).json(
+        ApiResponse.error('Image not in collection', {
+          image: 'This image is not in the collection'
         })
       );
     }
@@ -165,6 +193,17 @@ const deleteCollection = async (req, res) => {
       );
     }
 
+    // Store collection data before deletion
+    const deletedCollection = {
+      _id: collection._id,
+      name: collection.name,
+      description: collection.description,
+      userId: collection.userId,
+      images: collection.images,
+      createdAt: collection.createdAt,
+      updatedAt: collection.updatedAt
+    };
+
     // Remove collection reference from all images
     await Image.updateMany(
       { collections: collectionId },
@@ -176,7 +215,7 @@ const deleteCollection = async (req, res) => {
 
     res.json(
       ApiResponse.success(
-        null,
+        { deletedCollection },
         'Collection deleted successfully'
       )
     );

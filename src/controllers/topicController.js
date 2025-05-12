@@ -113,13 +113,20 @@ const addImageToTopic = async (req, res) => {
       );
     }
 
-    // Add image to topic if not already present
-    if (!topic.images.includes(imageId)) {
-      topic.images.push(imageId);
-      await topic.save();
+    // Check if image is already in topic
+    if (topic.images.includes(imageId)) {
+      return res.status(400).json(
+        ApiResponse.error('Image already in topic', {
+          image: 'This image is already in the topic'
+        })
+      );
     }
 
-    // Add topic to image if not already present
+    // Add image to topic
+    topic.images.push(imageId);
+    await topic.save();
+
+    // Add topic to image
     if (!image.topics.includes(topicId)) {
       image.topics.push(topicId);
       await image.save();
@@ -151,6 +158,15 @@ const removeImageFromTopic = async (req, res) => {
     if (!topic) {
       return res.status(404).json(
         ApiResponse.error('Topic not found')
+      );
+    }
+
+    // Check if image is in topic
+    if (!topic.images.includes(imageId)) {
+      return res.status(400).json(
+        ApiResponse.error('Image not in topic', {
+          image: 'This image is not in the topic'
+        })
       );
     }
 

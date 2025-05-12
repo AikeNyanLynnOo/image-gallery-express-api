@@ -8,6 +8,7 @@ const {
   getUserImages,
   deleteImage,
   toggleFavorite,
+  updateImage
 } = require("../controllers/imageController");
 
 // Custom error handler for multer
@@ -80,6 +81,7 @@ router.use(authenticateToken);
 // Add the error handler middleware after the upload middleware
 router.post("/upload", upload.single("image"), handleMulterError, uploadImage);
 router.get("/", getUserImages);
+router.patch("/:imageId", updateImage);
 router.delete("/:imageId", deleteImage);
 router.patch("/:imageId/favorite", toggleFavorite);
 
