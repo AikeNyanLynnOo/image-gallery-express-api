@@ -12,7 +12,8 @@ const {
   getFavoriteImages,
   checkFavoriteStatus,
   updateImage,
-  togglePublishStatus
+  togglePublishStatus,
+  getRandomImage,
 } = require("../controllers/imageController");
 const UserFavorite = require('../models/UserFavorite');
 
@@ -83,6 +84,8 @@ const upload = multer({
 
 // Public route (no authentication required)
 router.get("/public", getPublicImages);
+// Public route to get random image (optionally filtered by topic)
+router.get("/random/:topicId?", getRandomImage);
 
 // Protected routes
 router.use(authenticateToken);

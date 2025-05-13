@@ -72,3 +72,4 @@ router.post(
 router.delete("/avatar", deleteAvatar);
 
 module.exports = router;
+ 
