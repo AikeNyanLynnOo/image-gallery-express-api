@@ -46,9 +46,48 @@ const getAllTopics = async (req, res) => {
       .populate('images')
       .sort({ name: 1 });
 
+    // Get total images count and random cover image for each topic
+    const topicsWithDetails = await Promise.all(
+      topics.map(async (topic) => {
+        // Get total published images count
+        const totalImages = await Image.countDocuments({
+          topics: topic._id,
+          isPublished: true
+        });
+
+        // Get a random cover image if there are published images
+        let coverImage = null;
+        if (totalImages > 0) {
+          // Get a random published image from this topic
+          const randomImage = await Image.findOne({
+            topics: topic._id,
+            isPublished: true
+          })
+          .select('url cloudinaryId') // Only select necessary fields
+          .sort({ $natural: -1 }) // This helps with randomization
+          .limit(1);
+
+          if (randomImage) {
+            coverImage = {
+              url: randomImage.url,
+              cloudinaryId: randomImage.cloudinaryId
+            };
+          }
+        }
+
+        // Convert topic to plain object and add total_images and cover_image
+        const topicObj = topic.toObject();
+        return {
+          ...topicObj,
+          total_images: totalImages,
+          cover_image: coverImage
+        };
+      })
+    );
+
     res.json(
       ApiResponse.success(
-        { topics },
+        { topics: topicsWithDetails },
         'Topics retrieved successfully'
       )
     );
