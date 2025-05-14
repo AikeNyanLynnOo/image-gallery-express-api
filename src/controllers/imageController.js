@@ -1,6 +1,7 @@
 const cloudinary = require("../config/cloudinary");
 const Image = require("../models/Image");
 const Topic = require("../models/Topic");
+const Collection = require("../models/Collection");
 const ApiResponse = require("../utils/apiResponse");
 const UserFavorite = require("../models/UserFavorite");
 
@@ -8,19 +9,19 @@ const uploadImage = async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json(
-        ApiResponse.error('No file uploaded', {
-          file: 'Please upload an image file'
+        ApiResponse.error("No file uploaded", {
+          file: "Please upload an image file",
         })
       );
     }
 
     const { title } = req.body;
-    
+
     // Validate title
-    if (!title || typeof title !== 'string' || title.trim().length === 0) {
+    if (!title || typeof title !== "string" || title.trim().length === 0) {
       return res.status(400).json(
-        ApiResponse.error('Invalid title', {
-          title: 'Title is required and must be a non-empty string'
+        ApiResponse.error("Invalid title", {
+          title: "Title is required and must be a non-empty string",
         })
       );
     }
@@ -28,8 +29,8 @@ const uploadImage = async (req, res) => {
     // Check title length
     if (title.length > 200) {
       return res.status(400).json(
-        ApiResponse.error('Title too long', {
-          title: 'Title must be less than 200 characters'
+        ApiResponse.error("Title too long", {
+          title: "Title must be less than 200 characters",
         })
       );
     }
@@ -38,26 +39,29 @@ const uploadImage = async (req, res) => {
     const userId = req.user.userId;
 
     // Check file size
-    if (file.size > 5 * 1024 * 1024) { // 5MB
+    if (file.size > 5 * 1024 * 1024) {
+      // 5MB
       return res.status(400).json(
-        ApiResponse.error('File size too large', {
-          file: 'Image size must be less than 5MB. Please upload a smaller image.'
+        ApiResponse.error("File size too large", {
+          file: "Image size must be less than 5MB. Please upload a smaller image.",
         })
       );
     }
 
     // Upload to Cloudinary
     const result = await new Promise((resolve, reject) => {
-      cloudinary.uploader.upload_stream(
-        {
-          folder: `users/${userId}`,
-          resource_type: 'image',
-        },
-        (error, result) => {
-          if (error) reject(error);
-          else resolve(result);
-        }
-      ).end(file.buffer);
+      cloudinary.uploader
+        .upload_stream(
+          {
+            folder: `users/${userId}`,
+            resource_type: "image",
+          },
+          (error, result) => {
+            if (error) reject(error);
+            else resolve(result);
+          }
+        )
+        .end(file.buffer);
     });
 
     // Save image metadata to MongoDB
@@ -68,21 +72,18 @@ const uploadImage = async (req, res) => {
       url: result.secure_url,
       format: result.format,
       originalFormat: file.mimetype,
-      size: result.bytes
+      size: result.bytes,
     });
 
     await image.save();
 
-    res.status(201).json(
-      ApiResponse.success(
-        { image },
-        'Image uploaded successfully'
-      )
-    );
+    res
+      .status(201)
+      .json(ApiResponse.success({ image }, "Image uploaded successfully"));
   } catch (error) {
     res.status(500).json(
-      ApiResponse.error('Failed to upload image', {
-        general: error.message
+      ApiResponse.error("Failed to upload image", {
+        general: error.message,
       })
     );
   }
@@ -300,8 +301,8 @@ const getPublicImages = async (req, res) => {
       keyword,
       dateRange,
       sortBy,
-      page = 1,    // Default to first page
-      limit = 10   // Default to 10 items per page
+      page = 1, // Default to first page
+      limit = 10, // Default to 10 items per page
     } = req.query;
 
     // Convert page and limit to numbers and validate
@@ -323,7 +324,7 @@ const getPublicImages = async (req, res) => {
 
     // Add keyword search if provided (case-insensitive partial match on slug)
     if (keyword) {
-      query.slug = { $regex: keyword, $options: 'i' };
+      query.slug = { $regex: keyword, $options: "i" };
     }
 
     // Add date range filter if provided
@@ -332,16 +333,16 @@ const getPublicImages = async (req, res) => {
       let startDate;
 
       switch (dateRange) {
-        case 'today':
+        case "today":
           startDate = new Date(now.setHours(0, 0, 0, 0));
           break;
-        case '3days':
+        case "3days":
           startDate = new Date(now.setDate(now.getDate() - 3));
           break;
-        case 'week':
+        case "week":
           startDate = new Date(now.setDate(now.getDate() - 7));
           break;
-        case 'month':
+        case "month":
           startDate = new Date(now.setMonth(now.getMonth() - 1));
           break;
         default:
@@ -359,13 +360,13 @@ const getPublicImages = async (req, res) => {
 
     if (sortBy) {
       switch (sortBy) {
-        case 'views':
+        case "views":
           sortOptions = { views: -1 };
           break;
-        case 'likes':
+        case "likes":
           sortOptions = { likes: -1 };
           break;
-        case 'downloads':
+        case "downloads":
           sortOptions = { downloads: -1 };
           break;
         // If invalid sortBy, keep default sort
@@ -380,12 +381,46 @@ const getPublicImages = async (req, res) => {
       Image.find(query)
         .populate('topics')
         .populate('collections')
+        .populate({
+          path: 'userId',
+          select: 'email profile'
+        })
         .sort(sortOptions)
         .skip(skip)
         .limit(limitNumber)
         .select('-__v'),
       Image.countDocuments(query)
     ]);
+
+    // Get all unique user IDs from the images
+    const userIds = [...new Set(images.map(img => img.userId._id))];
+
+    // Get collections count for all users in one query
+    const collectionsCount = await Collection.aggregate([
+      { $match: { userId: { $in: userIds } } },
+      { $group: { _id: '$userId', totalCollections: { $sum: 1 } } }
+    ]);
+
+    // Create a map of userId to collections count
+    const collectionsCountMap = collectionsCount.reduce((acc, curr) => {
+      acc[curr._id.toString()] = curr.totalCollections;
+      return acc;
+    }, {});
+
+    // Transform the response to rename userId to user and add collections count
+    const transformedImages = images.map(image => {
+      const imageObj = image.toObject();
+      const user = imageObj.userId;
+      
+      // Add collections count to user object
+      user.totalCollections = collectionsCountMap[user._id.toString()] || 0;
+      
+      // Rename userId to user
+      imageObj.user = user;
+      delete imageObj.userId;
+      
+      return imageObj;
+    });
 
     // Calculate pagination metadata
     const totalPages = Math.ceil(total / limitNumber);
@@ -395,7 +430,7 @@ const getPublicImages = async (req, res) => {
     res.json(
       ApiResponse.success(
         { 
-          images,
+          images: transformedImages,
           pagination: {
             total,
             totalPages,
