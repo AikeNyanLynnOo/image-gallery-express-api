@@ -356,7 +356,7 @@ const getPublicImages = async (req, res) => {
     }
 
     // Build sort options
-    let sortOptions = { uploadedAt: -1 }; // Default sort by upload date
+    let sortOptions = { uploadedAt: -1 };
 
     if (sortBy) {
       switch (sortBy) {
@@ -395,29 +395,58 @@ const getPublicImages = async (req, res) => {
     // Get all unique user IDs from the images
     const userIds = [...new Set(images.map(img => img.userId._id))];
 
-    // Get collections count for all users in one query
-    const collectionsCount = await Collection.aggregate([
-      { $match: { userId: { $in: userIds } } },
-      { $group: { _id: '$userId', totalCollections: { $sum: 1 } } }
+    // Get collections count, total images count, and total likes for all users in parallel
+    const [collectionsCount, imagesCount, likesCount] = await Promise.all([
+      Collection.aggregate([
+        { $match: { userId: { $in: userIds } } },
+        { $group: { _id: '$userId', totalCollections: { $sum: 1 } } }
+      ]),
+      Image.aggregate([
+        { $match: { userId: { $in: userIds }, isPublished: true } },
+        { $group: { _id: '$userId', totalImages: { $sum: 1 } } }
+      ]),
+      Image.aggregate([
+        { $match: { userId: { $in: userIds }, isPublished: true } },
+        { $group: { _id: '$userId', totalLikes: { $sum: '$likes' } } }
+      ])
     ]);
 
-    // Create a map of userId to collections count
+    // Create maps for quick lookup
     const collectionsCountMap = collectionsCount.reduce((acc, curr) => {
       acc[curr._id.toString()] = curr.totalCollections;
       return acc;
     }, {});
 
-    // Transform the response to rename userId to user and add collections count
+    const imagesCountMap = imagesCount.reduce((acc, curr) => {
+      acc[curr._id.toString()] = curr.totalImages;
+      return acc;
+    }, {});
+
+    const likesCountMap = likesCount.reduce((acc, curr) => {
+      acc[curr._id.toString()] = curr.totalLikes;
+      return acc;
+    }, {});
+
+    // Get all topics for random selection
+    const allTopics = await Topic.find().select('name');
+
+    // Transform the response to rename userId to user and add counts
     const transformedImages = images.map(image => {
       const imageObj = image.toObject();
       const user = imageObj.userId;
       
-      // Add collections count to user object
+      // Add counts to user object
       user.totalCollections = collectionsCountMap[user._id.toString()] || 0;
+      user.totalImages = imagesCountMap[user._id.toString()] || 0;
+      user.totalLikes = likesCountMap[user._id.toString()] || 0;
       
       // Rename userId to user
       imageObj.user = user;
       delete imageObj.userId;
+
+      // Add 3 random tags to each image
+      const shuffledTopics = [...allTopics].sort(() => 0.5 - Math.random());
+      imageObj.tags = shuffledTopics.slice(0, 3).map(topic => topic.name);
       
       return imageObj;
     });
