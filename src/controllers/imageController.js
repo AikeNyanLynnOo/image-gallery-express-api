@@ -299,7 +299,7 @@ const getPublicImages = async (req, res) => {
       collection,
       topic,
       keyword,
-      dateRange,
+      uploadedWithin,
       sortBy,
       page = 1, // Default to first page
       limit = 10, // Default to 10 items per page
@@ -327,12 +327,12 @@ const getPublicImages = async (req, res) => {
       query.slug = { $regex: keyword, $options: "i" };
     }
 
-    // Add date range filter if provided
-    if (dateRange) {
+    // Add uploaded within filter if provided
+    if (uploadedWithin) {
       const now = new Date();
       let startDate;
 
-      switch (dateRange) {
+      switch (uploadedWithin) {
         case "today":
           startDate = new Date(now.setHours(0, 0, 0, 0));
           break;
@@ -346,7 +346,7 @@ const getPublicImages = async (req, res) => {
           startDate = new Date(now.setMonth(now.getMonth() - 1));
           break;
         default:
-          // If invalid dateRange, ignore it
+          // If invalid uploadedWithin, ignore it
           break;
       }
 
@@ -474,7 +474,7 @@ const getPublicImages = async (req, res) => {
             collection: collection || null,
             topic: topic || null,
             keyword: keyword || null,
-            dateRange: dateRange || null,
+            uploadedWithin: uploadedWithin || null,
             sortBy: sortBy || 'uploadedAt'
           }
         },
