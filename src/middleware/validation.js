@@ -2,6 +2,22 @@ const { body, validationResult } = require('express-validator');
 const ApiResponse = require('../utils/apiResponse');
 
 const validateSignup = [
+  // First name validation
+  body('firstName')
+    .trim()
+    .notEmpty()
+    .withMessage('First name is required')
+    .isLength({ max: 50 })
+    .withMessage('First name must not exceed 50 characters'),
+
+  // Last name validation
+  body('lastName')
+    .trim()
+    .notEmpty()
+    .withMessage('Last name is required')
+    .isLength({ max: 50 })
+    .withMessage('Last name must not exceed 50 characters'),
+
   // Email validation
   body('email')
     .trim()

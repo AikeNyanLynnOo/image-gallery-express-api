@@ -8,7 +8,7 @@ const TokenBlacklist = require('../models/TokenBlacklist');
 
 const signUp = async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, firstName, lastName } = req.body;
 
     // Check if user already exists
     const existingUser = await User.findOne({ email });
@@ -30,6 +30,11 @@ const signUp = async (req, res) => {
       password,
       verificationToken,
       verificationTokenExpires,
+      profile: {
+        firstName,
+        lastName,
+        displayName: `${firstName} ${lastName}` // Set display name as full name by default
+      }
     });
     await user.save();
 
@@ -46,6 +51,9 @@ const signUp = async (req, res) => {
           user: {
             id: user._id,
             email: user.email,
+            firstName: user.profile.firstName,
+            lastName: user.profile.lastName,
+            displayName: user.profile.displayName,
             isVerified: user.isVerified,
           },
           token,
