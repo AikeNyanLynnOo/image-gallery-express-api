@@ -18,6 +18,11 @@ const collectionSchema = new mongoose.Schema({
     ref: 'User', 
     required: true 
   },
+  coverImage: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Image',
+    default: null
+  },
   images: [{ 
     type: mongoose.Schema.Types.ObjectId, 
     ref: 'Image' 

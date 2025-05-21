@@ -1,11 +1,12 @@
 const Collection = require('../models/Collection');
 const Image = require('../models/Image');
 const ApiResponse = require('../utils/apiResponse');
+const cloudinary = require('../config/cloudinary');
 
 // Create a collection
 const createCollection = async (req, res) => {
   try {
-    const { name, description } = req.body;
+    const { name, description, coverImageId } = req.body;
     const userId = req.user.userId;
 
     // Check if collection with same name already exists for this user
@@ -22,17 +23,63 @@ const createCollection = async (req, res) => {
       );
     }
 
+    let coverImage = null;
+
+    // Handle cover image - either from existing image or new upload
+    if (req.file) {
+      // New image upload
+      const result = await new Promise((resolve, reject) => {
+        cloudinary.uploader
+          .upload_stream(
+            {
+              folder: `users/${userId}/covers`,
+              resource_type: "image",
+            },
+            (error, result) => {
+              if (error) reject(error);
+              else resolve(result);
+            }
+          )
+          .end(req.file.buffer);
+      });
+
+      // Create new image document for the cover
+      coverImage = new Image({
+        userId,
+        title: `${name} Cover Image`,
+        cloudinaryId: result.public_id,
+        url: result.secure_url,
+        isPublished: false // Cover images are private by default
+      });
+      await coverImage.save();
+    } else if (coverImageId) {
+      // Use existing image
+      coverImage = await Image.findOne({ _id: coverImageId, userId });
+      if (!coverImage) {
+        return res.status(400).json(
+          ApiResponse.error('Invalid cover image', {
+            coverImageId: 'Cover image not found or you do not have permission to use it'
+          })
+        );
+      }
+    }
+
     const collection = new Collection({
       name,
       description,
-      userId
+      userId,
+      coverImage: coverImage ? coverImage._id : null
     });
 
     await collection.save();
 
+    // Populate the cover image in the response
+    const populatedCollection = await Collection.findById(collection._id)
+      .populate('coverImage');
+
     res.status(201).json(
       ApiResponse.success(
-        { collection },
+        { collection: populatedCollection },
         'Collection created successfully'
       )
     );
