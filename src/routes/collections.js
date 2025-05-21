@@ -7,7 +7,8 @@ const {
   getUserCollections,
   addImageToCollection,
   removeImageFromCollection,
-  deleteCollection
+  deleteCollection,
+  updateCollection
 } = require('../controllers/collectionController');
 
 // Configure multer for memory storage
@@ -33,6 +34,7 @@ router.post('/', upload.single('coverImage'), createCollection);
 router.get('/', getUserCollections);
 router.post('/add-image', addImageToCollection);
 router.post('/remove-image', removeImageFromCollection);
+router.put('/:collectionId', upload.single('coverImage'), updateCollection);
 router.delete('/:collectionId', deleteCollection);
 
 module.exports = router; 
