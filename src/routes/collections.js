@@ -5,10 +5,12 @@ const { authenticateToken } = require('../middleware/auth');
 const {
   createCollection,
   getUserCollections,
+  getPublicCollections,
   addImageToCollection,
   removeImageFromCollection,
   deleteCollection,
-  updateCollection
+  updateCollection,
+  toggleCollectionVisibility
 } = require('../controllers/collectionController');
 
 // Configure multer for memory storage
@@ -26,7 +28,10 @@ const upload = multer({
   },
 });
 
-// All routes require authentication
+// Public routes
+router.get('/public', getPublicCollections);
+
+// Protected routes
 router.use(authenticateToken);
 
 // Collection routes
@@ -36,5 +41,6 @@ router.post('/add-image', addImageToCollection);
 router.post('/remove-image', removeImageFromCollection);
 router.put('/:collectionId', upload.single('coverImage'), updateCollection);
 router.delete('/:collectionId', deleteCollection);
+router.patch('/:collectionId/visibility', toggleCollectionVisibility);
 
 module.exports = router; 

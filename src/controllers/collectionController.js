@@ -6,7 +6,7 @@ const cloudinary = require("../config/cloudinary");
 // Create a collection
 const createCollection = async (req, res) => {
   try {
-    const { name, description, coverImageId } = req.body;
+    const { name, description, coverImageId, isPublic } = req.body;
     const userId = req.user.userId;
 
     // Check if collection with same name already exists for this user
@@ -69,6 +69,7 @@ const createCollection = async (req, res) => {
       name,
       description,
       userId,
+      isPublic: isPublic || false, // Default to false if not provided
       coverImage: coverImage ? coverImage._id : null,
     });
 
@@ -112,6 +113,27 @@ const getUserCollections = async (req, res) => {
     res.status(500).json(
       ApiResponse.error("Failed to retrieve collections", {
         general: error.message,
+      })
+    );
+  }
+};
+
+// Get public collections
+const getPublicCollections = async (req, res) => {
+  try {
+    const collections = await Collection.find({ isPublic: true })
+      .populate("coverImage")
+      .populate("images")
+      .populate("userId", "username avatar")
+      .sort({ updatedAt: -1 });
+
+    res.json(
+      ApiResponse.success({ collections }, "Public collections retrieved successfully")
+    );
+  } catch (error) {
+    res.status(500).json(
+      ApiResponse.error("Failed to retrieve public collections", {
+        general: error.message
       })
     );
   }
@@ -288,7 +310,7 @@ const deleteCollection = async (req, res) => {
 const updateCollection = async (req, res) => {
   try {
     const { collectionId } = req.params;
-    const { name, description, coverImageId } = req.body;
+    const { name, description, coverImageId, isPublic } = req.body;
     const userId = req.user.userId;
 
     // Verify collection ownership
@@ -364,6 +386,7 @@ const updateCollection = async (req, res) => {
     if (name) collection.name = name;
     if (description !== undefined) collection.description = description;
     if (coverImage) collection.coverImage = coverImage._id;
+    if (isPublic !== undefined) collection.isPublic = isPublic;
 
     await collection.save();
 
@@ -387,11 +410,55 @@ const updateCollection = async (req, res) => {
   }
 };
 
+// Toggle collection visibility (publish/unpublish)
+const toggleCollectionVisibility = async (req, res) => {
+  try {
+    const { collectionId } = req.params;
+    const userId = req.user.userId;
+
+    // Verify collection ownership
+    const collection = await Collection.findOne({ _id: collectionId, userId });
+    if (!collection) {
+      return res.status(404).json(
+        ApiResponse.error("Collection not found", {
+          collection: "Collection not found or you do not have permission to modify it"
+        })
+      );
+    }
+
+    // Toggle the isPublic status
+    collection.isPublic = !collection.isPublic;
+    await collection.save();
+
+    res.json(
+      ApiResponse.success(
+        { 
+          collection,
+          message: collection.isPublic 
+            ? "Collection published successfully" 
+            : "Collection unpublished successfully"
+        },
+        collection.isPublic 
+          ? "Collection is now public" 
+          : "Collection is now private"
+      )
+    );
+  } catch (error) {
+    res.status(500).json(
+      ApiResponse.error("Failed to toggle collection visibility", {
+        general: error.message
+      })
+    );
+  }
+};
+
 module.exports = {
   createCollection,
   getUserCollections,
+  getPublicCollections,
   addImageToCollection,
   removeImageFromCollection,
   deleteCollection,
   updateCollection,
+  toggleCollectionVisibility
 };
