@@ -18,6 +18,10 @@ const collectionSchema = new mongoose.Schema({
     ref: 'User', 
     required: true 
   },
+  isPublic: {
+    type: Boolean,
+    default: false // Collections are private by default
+  },
   coverImage: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Image',
