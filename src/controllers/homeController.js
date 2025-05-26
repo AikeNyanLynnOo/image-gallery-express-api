@@ -1,6 +1,7 @@
 const Topic = require("../models/Topic");
 const Image = require("../models/Image");
 const Collection = require("../models/Collection");
+const User = require("../models/User");
 const ApiResponse = require("../utils/apiResponse");
 
 // Get home page data
@@ -194,6 +195,156 @@ const getHomeData = async (req, res) => {
   }
 };
 
+// Search autocomplete
+const searchAutocomplete = async (req, res) => {
+  try {
+    const { query } = req.query;
+    
+    if (!query || query.length < 1) {
+      return res.json(ApiResponse.success({ results: [] }, "Search query too short"));
+    }
+
+    // Create regex pattern for case-insensitive search
+    const searchPattern = new RegExp(query, 'i');
+
+    // Search in parallel for all types
+    const [images, collections, topics, users] = await Promise.all([
+      // Search images
+      Image.aggregate([
+        { $match: { 
+          isPublished: true,
+          $or: [
+            { title: searchPattern },
+            { slug: searchPattern }
+          ]
+        }},
+        { $limit: 2 },
+        {
+          $lookup: {
+            from: "users",
+            localField: "userId",
+            foreignField: "_id",
+            as: "user"
+          }
+        },
+        { $unwind: "$user" },
+        {
+          $project: {
+            id: "$_id",
+            type: { $literal: "image" },
+            title: 1,
+            subtitle: { $concat: ["by ", { $ifNull: ["$user.profile.displayName", "Anonymous"] }] },
+            thumbnail: "$url"
+          }
+        }
+      ]),
+
+      // Search collections
+      Collection.aggregate([
+        { $match: { 
+          isPublic: true,
+          name: searchPattern 
+        }},
+        { $limit: 2 },
+        {
+          $lookup: {
+            from: "images",
+            localField: "coverImage",
+            foreignField: "_id",
+            as: "coverImage"
+          }
+        },
+        {
+          $project: {
+            id: "$_id",
+            type: { $literal: "collection" },
+            title: "$name",
+            subtitle: { $concat: [{ $toString: { $size: "$images" } }, " images"] },
+            thumbnail: { $arrayElemAt: ["$coverImage.url", 0] }
+          }
+        }
+      ]),
+
+      // Search topics
+      Topic.aggregate([
+        { $match: { name: searchPattern }},
+        { $limit: 2 },
+        {
+          $lookup: {
+            from: "images",
+            localField: "images",
+            foreignField: "_id",
+            as: "topicImages"
+          }
+        },
+        {
+          $addFields: {
+            randomImage: {
+              $arrayElemAt: [
+                "$topicImages",
+                0
+              ]
+            }
+          }
+        },
+        {
+          $project: {
+            id: "$_id",
+            type: { $literal: "topic" },
+            title: "$name",
+            subtitle: { $concat: [{ $toString: { $size: "$images" } }, " followers"] },
+            thumbnail: "$randomImage.url"
+          }
+        }
+      ]),
+
+      // Search users
+      User.aggregate([
+        { $match: {
+          $or: [
+            { "profile.firstName": searchPattern },
+            { "profile.lastName": searchPattern },
+            { "profile.displayName": searchPattern },
+            { username: searchPattern }
+          ]
+        }},
+        { $limit: 2 },
+        {
+          $project: {
+            id: "$_id",
+            type: { $literal: "user" },
+            title: { $ifNull: ["$profile.displayName", "Anonymous"] },
+            subtitle: { $ifNull: ["$profile.bio", "No bio available"] },
+            avatar: "$profile.avatar"
+          }
+        }
+      ])
+    ]);
+
+    // Combine all results
+    const results = [
+      ...images,
+      ...collections,
+      ...topics,
+      ...users
+    ];
+
+    res.json(
+      ApiResponse.success(
+        { results },
+        "Search results retrieved successfully"
+      )
+    );
+  } catch (error) {
+    res.status(500).json(
+      ApiResponse.error("Failed to retrieve search results", {
+        general: error.message
+      })
+    );
+  }
+};
+
 module.exports = {
-  getHomeData
+  getHomeData,
+  searchAutocomplete
 }; 
