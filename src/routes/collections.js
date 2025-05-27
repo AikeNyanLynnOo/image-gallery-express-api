@@ -10,7 +10,8 @@ const {
   removeImageFromCollection,
   deleteCollection,
   updateCollection,
-  toggleCollectionVisibility
+  toggleCollectionVisibility,
+  getCollectionPage
 } = require('../controllers/collectionController');
 
 // Configure multer for memory storage
@@ -30,6 +31,7 @@ const upload = multer({
 
 // Public routes
 router.get('/public', getPublicCollections);
+router.get('/page', getCollectionPage);
 
 // Protected routes
 router.use(authenticateToken);
