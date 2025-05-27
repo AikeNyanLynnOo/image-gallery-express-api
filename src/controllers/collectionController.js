@@ -482,6 +482,375 @@ const toggleCollectionVisibility = async (req, res) => {
   }
 };
 
+// Get collection page data
+const getCollectionPage = async (req, res) => {
+  try {
+    const {
+      imageCount,
+      dateCreated,
+      sortBy = 'popular',
+      query = '',
+      page = 1,
+      limit = 10
+    } = req.query;
+
+    // Convert page and limit to numbers and validate
+    const pageNumber = Math.max(1, parseInt(page));
+    const limitNumber = Math.min(50, Math.max(1, parseInt(limit))); // Limit between 1 and 50
+
+    // Build the base query for public collections with published images
+    const baseQuery = { isPublic: true };
+
+    // Add image count filter if provided
+    if (imageCount) {
+      const imageCountQuery = {
+        $lookup: {
+          from: "images",
+          let: { collectionImages: "$images" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $in: ["$_id", "$$collectionImages"] },
+                    { $eq: ["$isPublished", true] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: "publishedImages"
+        }
+      };
+
+      const imageCountMatch = {
+        $match: {
+          $expr: {
+            $let: {
+              vars: {
+                count: { $size: "$publishedImages" }
+              },
+              in: {
+                $switch: {
+                  branches: [
+                    { case: { $eq: [imageCount, "less_than_10"] }, then: { $lt: ["$$count", 10] } },
+                    { case: { $eq: [imageCount, "10_to_50"] }, then: { $and: [{ $gte: ["$$count", 10] }, { $lte: ["$$count", 50] }] } },
+                    { case: { $eq: [imageCount, "50_to_100"] }, then: { $and: [{ $gt: ["$$count", 50] }, { $lte: ["$$count", 100] }] } },
+                    { case: { $eq: [imageCount, "more_than_100"] }, then: { $gt: ["$$count", 100] } }
+                  ],
+                  default: true
+                }
+              }
+            }
+          }
+        }
+      };
+
+      baseQuery.$and = [imageCountQuery, imageCountMatch];
+    }
+
+    // Add date created filter if provided
+    if (dateCreated) {
+      const now = new Date();
+      let startDate;
+
+      switch (dateCreated) {
+        case "last_24_hr":
+          startDate = new Date(now.setHours(now.getHours() - 24));
+          break;
+        case "7_days":
+          startDate = new Date(now.setDate(now.getDate() - 7));
+          break;
+        case "30_days":
+          startDate = new Date(now.setDate(now.getDate() - 30));
+          break;
+        case "3_months":
+          startDate = new Date(now.setMonth(now.getMonth() - 3));
+          break;
+        case "last_year":
+          startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+          break;
+        default:
+          startDate = null;
+      }
+
+      if (startDate) {
+        baseQuery.createdAt = { $gte: startDate };
+      }
+    }
+
+    // Add text search if provided
+    if (query) {
+      baseQuery.$or = [
+        { name: { $regex: query, $options: 'i' } },
+        { description: { $regex: query, $options: 'i' } }
+      ];
+    }
+
+    // Build sort options based on collection metrics
+    let sortOptions = {};
+    switch (sortBy) {
+      case 'popular':
+        sortOptions = { 'metrics.totalEngagement': -1 };
+        break;
+      case 'recent':
+        sortOptions = { createdAt: -1 };
+        break;
+      case 'most_viewed':
+        sortOptions = { 'metrics.totalViews': -1 };
+        break;
+      case 'most_liked':
+        sortOptions = { 'metrics.totalLikes': -1 };
+        break;
+      case 'most_downloaded':
+        sortOptions = { 'metrics.totalDownloads': -1 };
+        break;
+      default:
+        sortOptions = { 'metrics.totalEngagement': -1 };
+    }
+
+    // Calculate skip value for pagination
+    const skip = (pageNumber - 1) * limitNumber;
+
+    // Get featured collections (4 most popular collections)
+    const featuredCollections = await Collection.aggregate([
+      { $match: { isPublic: true } },
+      {
+        $lookup: {
+          from: "images",
+          let: { collectionImages: "$images" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $in: ["$_id", "$$collectionImages"] },
+                    { $eq: ["$isPublished", true] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: "publishedImages"
+        }
+      },
+      {
+        $match: {
+          $expr: { $gt: [{ $size: "$publishedImages" }, 0] }
+        }
+      },
+      {
+        $lookup: {
+          from: "users",
+          localField: "userId",
+          foreignField: "_id",
+          as: "user"
+        }
+      },
+      { $unwind: "$user" },
+      {
+        $lookup: {
+          from: "images",
+          localField: "coverImage",
+          foreignField: "_id",
+          as: "coverImage"
+        }
+      },
+      {
+        $addFields: {
+          metrics: {
+            totalViews: { $sum: "$publishedImages.views" },
+            totalLikes: { $sum: "$publishedImages.likes" },
+            totalDownloads: { $sum: "$publishedImages.downloads" },
+            totalEngagement: {
+              $add: [
+                { $multiply: [{ $sum: "$publishedImages.views" }, 0.5] },
+                { $multiply: [{ $sum: "$publishedImages.likes" }, 2] },
+                { $multiply: [{ $sum: "$publishedImages.downloads" }, 3] }
+              ]
+            }
+          },
+          coverImage: { $arrayElemAt: ["$coverImage", 0] },
+          totalImages: { $size: "$publishedImages" }
+        }
+      },
+      { $sort: { "metrics.totalEngagement": -1 } },
+      { $limit: 4 },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          description: 1,
+          totalImages: 1,
+          metrics: 1,
+          coverImage: 1,
+          "user._id": 1,
+          "user.username": 1,
+          "user.avatar": 1
+        }
+      }
+    ]);
+
+    // Get suggested collections (10 random collections)
+    const suggestedCollections = await Collection.aggregate([
+      { $match: { isPublic: true } },
+      {
+        $lookup: {
+          from: "images",
+          let: { collectionImages: "$images" },
+          pipeline: [
+            {
+              $match: {
+                $expr: {
+                  $and: [
+                    { $in: ["$_id", "$$collectionImages"] },
+                    { $eq: ["$isPublished", true] }
+                  ]
+                }
+              }
+            }
+          ],
+          as: "publishedImages"
+        }
+      },
+      {
+        $match: {
+          $expr: { $gt: [{ $size: "$publishedImages" }, 0] }
+        }
+      },
+      { $sample: { size: 10 } },
+      {
+        $project: {
+          _id: 1,
+          name: 1,
+          totalImages: { $size: "$publishedImages" }
+        }
+      }
+    ]);
+
+    // Get search results with pagination
+    const [collections, total] = await Promise.all([
+      Collection.aggregate([
+        { $match: baseQuery },
+        {
+          $lookup: {
+            from: "images",
+            let: { collectionImages: "$images" },
+            pipeline: [
+              {
+                $match: {
+                  $expr: {
+                    $and: [
+                      { $in: ["$_id", "$$collectionImages"] },
+                      { $eq: ["$isPublished", true] }
+                    ]
+                  }
+                }
+              }
+            ],
+            as: "publishedImages"
+          }
+        },
+        {
+          $match: {
+            $expr: { $gt: [{ $size: "$publishedImages" }, 0] }
+          }
+        },
+        {
+          $lookup: {
+            from: "users",
+            localField: "userId",
+            foreignField: "_id",
+            as: "user"
+          }
+        },
+        { $unwind: "$user" },
+        {
+          $lookup: {
+            from: "images",
+            localField: "coverImage",
+            foreignField: "_id",
+            as: "coverImage"
+          }
+        },
+        {
+          $addFields: {
+            metrics: {
+              totalViews: { $sum: "$publishedImages.views" },
+              totalLikes: { $sum: "$publishedImages.likes" },
+              totalDownloads: { $sum: "$publishedImages.downloads" },
+              totalEngagement: {
+                $add: [
+                  { $multiply: [{ $sum: "$publishedImages.views" }, 0.5] },
+                  { $multiply: [{ $sum: "$publishedImages.likes" }, 2] },
+                  { $multiply: [{ $sum: "$publishedImages.downloads" }, 3] }
+                ]
+              }
+            },
+            coverImage: { $arrayElemAt: ["$coverImage", 0] },
+            totalImages: { $size: "$publishedImages" }
+          }
+        },
+        { $sort: sortOptions },
+        { $skip: skip },
+        { $limit: limitNumber },
+        {
+          $project: {
+            _id: 1,
+            name: 1,
+            description: 1,
+            totalImages: 1,
+            metrics: 1,
+            coverImage: 1,
+            "user._id": 1,
+            "user.username": 1,
+            "user.avatar": 1
+          }
+        }
+      ]),
+      Collection.countDocuments(baseQuery)
+    ]);
+
+    // Calculate pagination metadata
+    const totalPages = Math.ceil(total / limitNumber);
+    const hasNextPage = pageNumber < totalPages;
+    const hasPrevPage = pageNumber > 1;
+
+    res.json(
+      ApiResponse.success(
+        {
+          featuredCollections,
+          suggestedCollections,
+          collections,
+          pagination: {
+            total,
+            totalPages,
+            currentPage: pageNumber,
+            limit: limitNumber,
+            hasNextPage,
+            hasPrevPage,
+            nextPage: hasNextPage ? pageNumber + 1 : null,
+            prevPage: hasPrevPage ? pageNumber - 1 : null
+          },
+          filters: {
+            imageCount: imageCount || null,
+            dateCreated: dateCreated || null,
+            sortBy,
+            query: query || null
+          }
+        },
+        "Collection page data retrieved successfully"
+      )
+    );
+  } catch (error) {
+    res.status(500).json(
+      ApiResponse.error("Failed to retrieve collection page data", {
+        general: error.message
+      })
+    );
+  }
+};
+
 module.exports = {
   createCollection,
   getUserCollections,
@@ -490,5 +859,6 @@ module.exports = {
   removeImageFromCollection,
   deleteCollection,
   updateCollection,
-  toggleCollectionVisibility
+  toggleCollectionVisibility,
+  getCollectionPage
 };
