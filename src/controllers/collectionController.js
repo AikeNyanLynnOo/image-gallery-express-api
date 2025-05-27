@@ -102,12 +102,26 @@ const getUserCollections = async (req, res) => {
   try {
     const userId = req.user.userId;
     const collections = await Collection.find({ userId })
-      .populate("coverImage")
-      .populate("images")
+      .populate({
+        path: "coverImage",
+        match: { userId } // Only show user's own cover images
+      })
+      .populate({
+        path: "images",
+        match: { userId } // Only show user's own images
+      })
       .sort({ updatedAt: -1 });
 
+    // Transform collections to include total published images count
+    const transformedCollections = collections.map(collection => {
+      const collectionObj = collection.toObject();
+      collectionObj.totalImages = collection.images.length;
+      collectionObj.publishedImages = collection.images.filter(img => img.isPublished).length;
+      return collectionObj;
+    });
+
     res.json(
-      ApiResponse.success({ collections }, "Collections retrieved successfully")
+      ApiResponse.success({ collections: transformedCollections }, "Collections retrieved successfully")
     );
   } catch (error) {
     res.status(500).json(
@@ -122,13 +136,29 @@ const getUserCollections = async (req, res) => {
 const getPublicCollections = async (req, res) => {
   try {
     const collections = await Collection.find({ isPublic: true })
-      .populate("coverImage")
-      .populate("images")
+      .populate({
+        path: "coverImage",
+        match: { isPublished: true }
+      })
+      .populate({
+        path: "images",
+        match: { isPublished: true },
+        select: "url cloudinaryId title isPublished" // Only select necessary fields
+      })
       .populate("userId", "username avatar")
       .sort({ updatedAt: -1 });
 
+    // Filter out collections with no published images
+    const filteredCollections = collections
+      .filter(collection => collection.images.length > 0)
+      .map(collection => {
+        const collectionObj = collection.toObject();
+        collectionObj.totalImages = collection.images.length;
+        return collectionObj;
+      });
+
     res.json(
-      ApiResponse.success({ collections }, "Public collections retrieved successfully")
+      ApiResponse.success({ collections: filteredCollections }, "Public collections retrieved successfully")
     );
   } catch (error) {
     res.status(500).json(
