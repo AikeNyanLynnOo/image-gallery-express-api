@@ -36,8 +36,34 @@ const getExploreData = async (req, res) => {
 
     // Get suggested topics
     const suggestedTopics = await Topic.aggregate([
-      { $sample: { size: 10 } },
-      { $project: { name: 1, value: "$_id" } }
+      {
+        $lookup: {
+          from: 'images',
+          localField: '_id',
+          foreignField: 'topics',
+          as: 'images'
+        }
+      },
+      {
+        $addFields: {
+          totalLikes: {
+            $reduce: {
+              input: '$images',
+              initialValue: 0,
+              in: { $add: ['$$value', '$$this.likes'] }
+            }
+          }
+        }
+      },
+      {
+        $sort: { totalLikes: -1, name: 1 }
+      },
+      {
+        $limit: 10
+      },
+      {
+        $project: { name: 1, value: '$_id' }
+      }
     ]);
 
     // Build the base query for published images
