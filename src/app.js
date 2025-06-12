@@ -10,6 +10,7 @@ const collectionRoutes = require("./routes/collections");
 const topicRoutes = require("./routes/topics");
 const profileRoutes = require("./routes/profile");
 const homeRoutes = require("./routes/home");
+const exploreRoutes = require("./routes/explore");
 
 const app = express();
 
@@ -49,6 +50,7 @@ app.use("/api/images", imageRoutes);
 app.use("/api/collections", collectionRoutes);
 app.use("/api/topics", topicRoutes);
 app.use("/api/home", homeRoutes);
+app.use("/api/explore", exploreRoutes);
 
 // Error handling middleware
 app.use((err, req, res, next) => {

@@ -430,6 +430,24 @@ const getPublicImages = async (req, res) => {
     // Get all topics for random selection
     const allTopics = await Topic.find().select('name');
 
+    // Get topic and collection names if they exist
+    let topicName = null;
+    let collectionName = null;
+
+    if (topic) {
+      const topicDoc = await Topic.findById(topic);
+      if (topicDoc) {
+        topicName = topicDoc.name;
+      }
+    }
+
+    if (collection) {
+      const collectionDoc = await Collection.findById(collection);
+      if (collectionDoc) {
+        collectionName = collectionDoc.name;
+      }
+    }
+
     // Transform the response to rename userId to user and add counts
     const transformedImages = images.map(image => {
       const imageObj = image.toObject();
@@ -471,8 +489,8 @@ const getPublicImages = async (req, res) => {
             prevPage: hasPrevPage ? pageNumber - 1 : null
           },
           filters: {
-            collection: collection || null,
-            topic: topic || null,
+            collection: collectionName,
+            topic: topicName,
             keyword: keyword || null,
             uploadedWithin: uploadedWithin || null,
             sortBy: sortBy || 'uploadedAt'
