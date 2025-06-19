@@ -488,8 +488,8 @@ const getCollectionPage = async (req, res) => {
     const {
       imageCount,
       dateCreated,
-      sortBy = 'popular',
-      query = '',
+      sortBy = 'likes',
+      keyword = '',
       page = 1,
       limit = 10
     } = req.query;
@@ -555,20 +555,17 @@ const getCollectionPage = async (req, res) => {
       let startDate;
 
       switch (dateCreated) {
-        case "last_24_hr":
-          startDate = new Date(now.setHours(now.getHours() - 24));
+        case "today":
+          startDate = new Date(now.setHours(0, 0, 0, 0));
           break;
-        case "7_days":
+        case "3days":
+          startDate = new Date(now.setDate(now.getDate() - 3));
+          break;
+        case "week":
           startDate = new Date(now.setDate(now.getDate() - 7));
           break;
-        case "30_days":
-          startDate = new Date(now.setDate(now.getDate() - 30));
-          break;
-        case "3_months":
-          startDate = new Date(now.setMonth(now.getMonth() - 3));
-          break;
-        case "last_year":
-          startDate = new Date(now.setFullYear(now.getFullYear() - 1));
+        case "month":
+          startDate = new Date(now.setMonth(now.getMonth() - 1));
           break;
         default:
           startDate = null;
@@ -580,33 +577,28 @@ const getCollectionPage = async (req, res) => {
     }
 
     // Add text search if provided
-    if (query) {
+    if (keyword) {
       baseQuery.$or = [
-        { name: { $regex: query, $options: 'i' } },
-        { description: { $regex: query, $options: 'i' } }
+        { name: { $regex: keyword, $options: 'i' } },
+        { description: { $regex: keyword, $options: 'i' } },
+        { "user.username": { $regex: keyword, $options: 'i' } }
       ];
     }
 
     // Build sort options based on collection metrics
     let sortOptions = {};
     switch (sortBy) {
-      case 'popular':
-        sortOptions = { 'metrics.totalEngagement': -1 };
-        break;
-      case 'recent':
-        sortOptions = { createdAt: -1 };
-        break;
-      case 'most_viewed':
-        sortOptions = { 'metrics.totalViews': -1 };
-        break;
-      case 'most_liked':
+      case 'likes':
         sortOptions = { 'metrics.totalLikes': -1 };
         break;
-      case 'most_downloaded':
+      case 'views':
+        sortOptions = { 'metrics.totalViews': -1 };
+        break;
+      case 'downloads':
         sortOptions = { 'metrics.totalDownloads': -1 };
         break;
       default:
-        sortOptions = { 'metrics.totalEngagement': -1 };
+        sortOptions = { 'metrics.totalLikes': -1 }; // Default to total likes
     }
 
     // Calculate skip value for pagination
@@ -687,43 +679,6 @@ const getCollectionPage = async (req, res) => {
           "user._id": 1,
           "user.username": 1,
           "user.avatar": 1
-        }
-      }
-    ]);
-
-    // Get suggested collections (10 random collections)
-    const suggestedCollections = await Collection.aggregate([
-      { $match: { isPublic: true } },
-      {
-        $lookup: {
-          from: "images",
-          let: { collectionImages: "$images" },
-          pipeline: [
-            {
-              $match: {
-                $expr: {
-                  $and: [
-                    { $in: ["$_id", "$$collectionImages"] },
-                    { $eq: ["$isPublished", true] }
-                  ]
-                }
-              }
-            }
-          ],
-          as: "publishedImages"
-        }
-      },
-      {
-        $match: {
-          $expr: { $gt: [{ $size: "$publishedImages" }, 0] }
-        }
-      },
-      { $sample: { size: 10 } },
-      {
-        $project: {
-          _id: 1,
-          name: 1,
-          totalImages: { $size: "$publishedImages" }
         }
       }
     ]);
@@ -816,11 +771,29 @@ const getCollectionPage = async (req, res) => {
     const hasNextPage = pageNumber < totalPages;
     const hasPrevPage = pageNumber > 1;
 
+    // Define filter options for the response (similar to explore page)
+    const imageCountOptions = [
+      { name: "Less than 10", value: "less_than_10" },
+      { name: "10 to 50", value: "10_to_50" },
+      { name: "50 to 100", value: "50_to_100" },
+      { name: "More than 100", value: "more_than_100" }
+    ];
+    const dateCreatedOptions = [
+      { name: "Today", value: "today" },
+      { name: "Last 3 Days", value: "3days" },
+      { name: "This Week", value: "week" },
+      { name: "This Month", value: "month" }
+    ];
+    const sortByOptions = [
+      { name: "Most Likes", value: "likes" },
+      { name: "Most Views", value: "views" },
+      { name: "Most Downloads", value: "downloads" }
+    ];
+
     res.json(
       ApiResponse.success(
         {
           featuredCollections,
-          suggestedCollections,
           collections,
           pagination: {
             total,
@@ -832,11 +805,16 @@ const getCollectionPage = async (req, res) => {
             nextPage: hasNextPage ? pageNumber + 1 : null,
             prevPage: hasPrevPage ? pageNumber - 1 : null
           },
+          filterOptions: {
+            imageCount: imageCountOptions,
+            dateCreated: dateCreatedOptions,
+            sortBy: sortByOptions
+          },
           filters: {
             imageCount: imageCount || null,
             dateCreated: dateCreated || null,
             sortBy,
-            query: query || null
+            keyword: keyword || null
           }
         },
         "Collection page data retrieved successfully"
